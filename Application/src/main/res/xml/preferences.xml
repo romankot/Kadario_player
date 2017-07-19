@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android">
+    <EditTextPreference
+        android:title="IP address"
+        android:key="IP"
+        android:summary="Please provide radio ip address"
+        android:defaultValue="192.168.1.110">
+    </EditTextPreference>
+    <Preference
+        android:title="Station list file"
+        android:key="@string/StationListPath"
+        android:summary="Provide station list"
+        android:defaultValue="WebStations.txt"
+        />
+    <CheckBoxPreference android:title="Application Updates"
+        android:defaultValue="true"
+        android:summary="This option if selected will allow the application to check for latest versions."
+        android:key="applicationUpdates" />
+    <!--<ListPreference     android:title="Download Details"-->
+        <!--android:summary="Select the kind of data that you would like to download"-->
+        <!--android:key="downloadType"-->
+        <!--android:defaultValue="1"-->
+        <!--android:entries="@array/listArray"-->
+        <!--android:entryValues="@array/listValues" />-->
+</PreferenceScreen>
