@@ -18,17 +18,24 @@ package com.kremor.karadio.main;
 
 import android.app.ListActivity;
 import android.content.ActivityNotFoundException;
+import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
+import android.os.AsyncTask;
+import android.os.Build;
 import android.os.Bundle;
 import android.preference.PreferenceManager;
+import android.support.annotation.RequiresApi;
+import android.support.v7.app.AlertDialog;
 import android.view.KeyEvent;
+import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.BaseAdapter;
 import android.widget.ImageButton;
+import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -39,15 +46,17 @@ import com.android.volley.VolleyError;
 import com.android.volley.toolbox.StringRequest;
 import com.android.volley.toolbox.Volley;
 
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileReader;
+import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 
-/**
- * This activity demonstrates the <b>borderless button</b> styling from the Holo visual language.
- * The most interesting bits in this sample are in the layout files (res/layout/).
- * <p>
- * See <a href="http://developer.android.com/design/building-blocks/buttons.html#borderless">
- * borderless buttons</a> at the Android Design guide for a discussion of this visual style.
- */
+import okhttp3.HttpUrl;
+import okhttp3.OkHttpClient;
+
 public class MainActivity extends ListActivity  {
     private static final Uri DOCS_URI = Uri.parse(
             "https://github.com/karawin/Ka-Radio");
@@ -58,66 +67,61 @@ public class MainActivity extends ListActivity  {
     String charset = "UTF-8";  // Or in Java 7 and later, use the constant: java.nio.charset.StandardCharsets.UTF_8.name()
     String station = "1";
     String volume = "50";
-    boolean pauseIsPressed = true;
+    boolean radioPlaying = false;
     private ImageButton playButton;
     private TextView statusBar;
-    public int mCurrentStation;
-    List<Station> stationList;
+    public int mCurrentStation = 0;
+    List<Station> mStationList;
     private RequestQueue mRequestQueue;
     private int mCurrentVolume = 80;
-    private boolean isPlaying = false;
 
+    @RequiresApi(api = Build.VERSION_CODES.KITKAT)
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.sample_main);
-        PreferenceManager.setDefaultValues(this, R.xml.preferences, false);
-        stationList = Station.readStationList(this);
-        setListAdapter(mListAdapter);
+        setContentView(R.layout.main);
         mRequestQueue = Volley.newRequestQueue(this);
+        PreferenceManager.setDefaultValues(this, R.xml.preferences, false);
+        mStationList = readStationList(this, mRequestQueue);
+        setListAdapter(mListAdapter);
+        sendCommand("infos", 0);
         statusBar = (TextView) findViewById(R.id.statusBar);
 
         findViewById(R.id.prev_button).setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                int prevStation = Station.getPrevStation(mCurrentStation);
-                if (!pauseIsPressed) {
-                    statusBar.setText(stationList.get(prevStation) + " is playing");
-                    sendCommand("play", prevStation, mCurrentVolume);
-                } else {
-                    statusBar.setText(stationList.get(prevStation) + " is current station");
+                int prevStation = prevStation(mCurrentStation);
+                if (radioPlaying) {
+                    statusBar.setText(mStationList.get(prevStation) + " is playing");
+                    sendCommand("play", prevStation);
                 }
-                mCurrentStation = prevStation;
             }
         });
         findViewById(R.id.next_button).setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                int nextStation = mCurrentStation+1;
-                if (pauseIsPressed) {
-                    statusBar.setText(stationList.get(nextStation) + " is current station");
-                } else {
-                    sendCommand("play", nextStation, mCurrentVolume);
-                    statusBar.setText(stationList.get(nextStation) + " is playing");
+                int nextStation = nextStation(mCurrentStation);
+                if (radioPlaying) {
+                    sendCommand("play", nextStation);
+                    statusBar.setText(mStationList.get(nextStation) + " is playing");
                 }
-                mCurrentStation = nextStation;
             }
         });
         playButton = (ImageButton) findViewById(R.id.play_button);
         playButton.setOnClickListener(new View.OnClickListener() {
             //@RequiresApi(api = Build.VERSION_CODES.N)
             public void onClick(View view) {
-                if (pauseIsPressed){
+                if (!radioPlaying){
                     //send get reqeust to start
-                    sendCommand("play", mCurrentStation, mCurrentVolume);
-                    statusBar.setText(stationList.get(mCurrentStation) + " is playing");
+                    sendCommand("play", mCurrentStation);
+                    statusBar.setText(mStationList.get(mCurrentStation) + " is playing");
                     playButton.setImageResource(R.drawable.profile_pause);
-                    pauseIsPressed = false;
+                    radioPlaying = true;
                 } else {
                     // pausing play
-                    sendCommand("stop", 0, mCurrentVolume);
-                    statusBar.setText(stationList.get(mCurrentStation) + " has stop");
+                    sendCommand("stop", 0);
+                    statusBar.setText(mStationList.get(mCurrentStation) + " has stop");
                     playButton.setImageResource(R.drawable.profile_play);
-                    pauseIsPressed = true;
+                    radioPlaying = false;
                 }
             }
         });
@@ -142,17 +146,56 @@ public class MainActivity extends ListActivity  {
         }
     }
 
-    private void sendCommand(String command, int StationToPlay, int volume) {
+    @Override
+    protected void onSaveInstanceState(Bundle outState) {
+        outState.putInt("currentStation", mCurrentStation);
+        outState.putString("status", String.valueOf(statusBar.getText()));
+        outState.putBoolean("playing", radioPlaying);
+        super.onSaveInstanceState(outState);
+    }
+
+    @Override
+    public void onRestoreInstanceState(Bundle savedInstanceState) {
+        super.onRestoreInstanceState(savedInstanceState);
+        statusBar.setText(savedInstanceState.getString("status"));
+        if (savedInstanceState.getBoolean("playing")) {
+            playButton.setImageResource(R.drawable.profile_play);
+        } else playButton.setImageResource(R.drawable.profile_pause);
+    }
+
+    private int nextStation(int mCurrentStation) {
+        if (mCurrentStation < 0 || mCurrentStation + 1 > mStationList.size())
+            return mCurrentStation;
+        return mCurrentStation + 1;
+    }
+
+    private int prevStation(int mCurrentStation) {
+        if (mCurrentStation <= 0) return mCurrentStation;
+            return mCurrentStation - 1;
+    }
+
+    private void sendCommand(final String command, int StationToPlay) {
         String ipaddress = PreferenceManager.getDefaultSharedPreferences(getBaseContext()).getString("IP", DEFAULT_RADIO_IP);
-        String url = "http://" + ipaddress + "/" + "?" + command + "=" + StationToPlay + "&" + "volume=" + volume;
+        String url = "http://" + ipaddress + "/" + "?" + command + "=" + StationToPlay + "&" + "volume=" + mCurrentVolume;
 
         // Request a string response from the provided DEFAULT_RADIO_IP.
         StringRequest stringRequest = new StringRequest(Request.Method.GET, url,
                 new Response.Listener<String>() {
                     @Override
                     public void onResponse(String response) {
-                        // Display the first 500 characters of the response string.
-                        //statusBar.setText("Response is: "+ response.substring(0,2));
+                        if (command.equals("infos")) {
+                            String[] arr = response.split("\n");
+                            List<String> list = new ArrayList<>();
+                            for (String s: arr){
+                                list.add(s.substring( s.indexOf(":")+1));
+                                list.set(list.size()-1, list.get(list.size()-1).trim());
+                            }
+                            if (radioPlaying = Integer.parseInt(list.get(4)) > 0) {
+                                mCurrentVolume= Integer.parseInt(list.get(0));
+                                mCurrentStation = Integer.parseInt(list.get(1));
+                                statusBar.setText(mStationList.get(mCurrentStation) + " is playing");
+                            };
+                        }
                     }
                 }, new Response.ErrorListener() {
             @Override
@@ -168,12 +211,12 @@ public class MainActivity extends ListActivity  {
 
         @Override
         public int getCount() {
-            return stationList.size();
+            return mStationList.size();
         }
 
         @Override
         public Object getItem(int position) {
-            return stationList.get(position);
+            return mStationList.get(position);
         }
 
         @Override
@@ -187,31 +230,24 @@ public class MainActivity extends ListActivity  {
                 convertView = getLayoutInflater().inflate(R.layout.list_item, container, false);
             }
 
-            Station currentItem = (Station) getItem(position);
+            Station station = (Station) getItem(position);
             TextView textViewStationName = (TextView) convertView.findViewById(R.id.stationName);
-            textViewStationName.setText(currentItem.toString());
+            textViewStationName.setText(station.toString());
 
             // Because the list item contains multiple touch targets, you should not override
             // onListItemClick. Instead, set a click listener for each target individually.
 
-            convertView.findViewById(R.id.primary_target).setOnClickListener(
-                    new View.OnClickListener() {
+            convertView.findViewById(R.id.primary_target).setOnLongClickListener(
+                    new View.OnLongClickListener() {
                         @Override
-                        public void onClick(View view) {
-                            mCurrentStation = (int) getItemId(position);
-                            statusBar.setText(stationList.get(mCurrentStation) + " is current station");
+                        public boolean onLongClick(View view) {
+                            sendCommand("play", position);
+                            mCurrentStation = position;
+                            playButton.setImageResource(R.drawable.profile_pause);
+                            statusBar.setText(mStationList.get(position) + " is playing");
+                            return false;
                         }
                     });
-
-//            convertView.findViewById(R.id.secondary_action).setOnClickListener(
-//                    new View.OnClickListener() {
-//                        @Override
-//                        public void onClick(View view) {
-//                            Toast.makeText(MainActivity.this,
-//                                    getText(R.string.touched_secondary_message) + String.valueOf(getItemId(position)),
-//                                    Toast.LENGTH_SHORT).show();
-//                        }
-//                    });
             return convertView;
         }
     };
@@ -270,22 +306,121 @@ public class MainActivity extends ListActivity  {
         switch (keyCode) {
             case KeyEvent.KEYCODE_VOLUME_UP:
                 if (action == KeyEvent.ACTION_DOWN) {
-                    mCurrentVolume += 15;
+                    mCurrentVolume += 10;
                     Toast.makeText(this, "Volume Up " + mCurrentVolume, Toast.LENGTH_SHORT).show();
-                    sendCommand("", mCurrentStation, mCurrentVolume);
+                    sendCommand("", mCurrentStation);
                     return true;
                 }
                 return true;
             case KeyEvent.KEYCODE_VOLUME_DOWN:
                 if (action == KeyEvent.ACTION_DOWN) {
-                    mCurrentVolume -= 15;
+                    mCurrentVolume -= 10;
                     Toast.makeText(this, "Volume Down " + mCurrentVolume, Toast.LENGTH_SHORT).show();
-                    sendCommand("", mCurrentStation, mCurrentVolume);
+                    sendCommand("", mCurrentStation);
                     return true;
                 }
                 return true;
             default:
                 return super.dispatchKeyEvent(event);
         }
+    }
+
+    public AlertDialog alarmVolume(View view) {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        LayoutInflater inflater = (LayoutInflater) getSystemService(LAYOUT_INFLATER_SERVICE);
+        View v = inflater.inflate(R.layout.volume_dialog, (ViewGroup) findViewById(R.id.volume_dialog_root_element));
+
+
+        SeekBar seekbarVolume = (SeekBar)v.findViewById(R.id.dialog_seekbar);
+        seekbarVolume.setMax(255);
+        //seekbarVolume.setProgress(audioManager.getStreamVolume(AudioManager.STREAM_ALARM));
+        seekbarVolume.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                mCurrentVolume = progress;
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) {
+
+            }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {
+
+            }
+        });
+        return  builder.create();
+    }
+
+    private class DownloadStationTask extends AsyncTask<String, Void, String> {
+
+        @Override
+        protected String doInBackground(String... urls) {
+            String ipaddress = PreferenceManager.getDefaultSharedPreferences(MainActivity.this).getString("IP", MainActivity.DEFAULT_RADIO_IP);
+            OkHttpClient client = new OkHttpClient();
+            for (int i = 0; i < 255; i++) {
+                HttpUrl url = new HttpUrl.Builder()
+                            .scheme("http")
+                            .host(ipaddress)
+                            .addQueryParameter("list", String.valueOf(i))
+                            .build();
+                okhttp3.Request request =
+                        new okhttp3.Request.Builder()
+                                .url(url)
+                                .build();
+                okhttp3.Response response = null;
+                try {
+                    response = client.newCall(request).execute();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+
+                if (response.isSuccessful() && response.body() != null) {
+                    try {
+                        mStationList.add(new Station(response.body().string(), 0));
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                }
+            }
+            return "Download failed";
+        }
+
+        @Override
+        protected void onPostExecute(String result)        {
+
+        }
+    }
+
+    @RequiresApi(api = Build.VERSION_CODES.KITKAT)
+    public List<Station> readStationList(Context context, RequestQueue mRequestQueue) {
+        if (PreferenceManager.getDefaultSharedPreferences(context).getBoolean(MainActivity.FIRSTRUN, true)) {
+            try {
+                DownloadStationTask task = new DownloadStationTask();
+                task.execute();
+                mListAdapter.notifyDataSetChanged();
+
+            } finally {
+
+            }
+        }
+        else {
+            // just convert local file to StationList
+            File internalStorageDir = context.getFilesDir();
+            File filestations = new File(internalStorageDir, "stations.csv");
+            try (BufferedReader br = new BufferedReader(new FileReader(filestations))) {
+                String line;
+                while ((line = br.readLine()) != null) {
+                    mStationList.add(new Station(line, 1));
+                }
+
+            } catch (FileNotFoundException e) {
+                e.printStackTrace();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+        return Station.createMockStationList();
     }
 }
