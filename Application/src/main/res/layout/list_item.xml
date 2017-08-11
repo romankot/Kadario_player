@@ -29,12 +29,12 @@
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
-    android:orientation="horizontal"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:minHeight="?android:listPreferredItemHeight"
     android:divider="?android:dividerVertical"
-    android:dividerPadding="8dp"
+    android:dividerPadding="2dp"
+    android:minHeight="?android:listPreferredItemHeight"
+    android:orientation="horizontal"
     android:showDividers="middle">
 
     <!--
@@ -75,14 +75,14 @@
         background to ?android:selectableItemBackground, as described above.
     -->
     <!--<ImageButton-->
-        <!--android:id="@+id/secondary_action"-->
-        <!--style="?android:borderlessButtonStyle"-->
-        <!--android:layout_width="@dimen/standard_touch_target_size"-->
-        <!--android:layout_height="match_parent"-->
-        <!--android:layout_weight="0.09"-->
-        <!--android:adjustViewBounds="true"-->
-        <!--android:contentDescription="@string/delete_content_description"-->
-        <!--android:scaleType="fitStart"-->
-        <!--android:src="@drawable/play_arrow" />-->
+    <!--android:id="@+id/secondary_action"-->
+    <!--style="?android:borderlessButtonStyle"-->
+    <!--android:layout_width="@dimen/standard_touch_target_size"-->
+    <!--android:layout_height="match_parent"-->
+    <!--android:layout_weight="0.09"-->
+    <!--android:adjustViewBounds="true"-->
+    <!--android:contentDescription="@string/delete_content_description"-->
+    <!--android:scaleType="fitStart"-->
+    <!--android:src="@drawable/play_arrow" />-->
 
 </LinearLayout>

@@ -31,4 +31,5 @@
     <string name="docs_title">Project readme</string>
     <string name="Options">Options</string>
     <string name="StationListPath">stationListPath</string>
+    <string name="playing">playing</string>
 </resources>
