@@ -1,17 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android">
     <EditTextPreference
+        android:key="@string/ip"
         android:title="IP address"
-        android:key="IP"
         android:summary="Please provide radio ip address"
-        android:defaultValue="192.168.1.110">
+        android:defaultValue="@string/defaultIP">
     </EditTextPreference>
-    <Preference
-        android:title="Station list file"
-        android:key="@string/StationListPath"
-        android:summary="Provide station list"
-        android:defaultValue="WebStations.txt"
-        />
     <CheckBoxPreference android:title="Application Updates"
         android:defaultValue="true"
         android:summary="This option if selected will allow the application to check for latest versions."

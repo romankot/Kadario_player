@@ -24,6 +24,7 @@ import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.Serializable;
 import java.io.UnsupportedEncodingException;
 import java.util.ArrayList;
 import java.util.List;
@@ -38,51 +39,23 @@ import okhttp3.OkHttpClient;
  * Created by kremor on 13.07.2017.
  */
 
-class Station {
+class Station implements Serializable {
     private int id;
     private String name;
-    private String url;
-    private String file;
-    private String port;
-    private int stationVolume;
-    private static List<Station> stations = new ArrayList<>();
 
-    public Station(int id, String name, String url, String file, String port, int stationVolume) {
-        this.id = id;
+    public Station(String name) {
+        this.id = 0;
         this.name = name;
-        this.url = url;
-        this.file = file;
-        this.port = port;
-        this.stationVolume = stationVolume;
-    }
-
-    public Station(int i) {
-        this.id = i;
-        this.name = "Station";
-        this.stationVolume = 50;
     }
 
     public Station(String name, int id) {
         this.id = id;
         this.name = name;
-        this.stationVolume = 50;
     }
 
     @Override
     public String toString() {
-        return "Station " + id;
-    }
-
-    public static int getPrevStation(int i) {
-        if (i <= 0) return 0;
-        else
-            return i - 1;
-    }
-
-    public static int getNextStation(int i) {
-        if (i >= stations.size()) return stations.size();
-        else
-            return i + 1;
+        return name;
     }
 
     public int getId() {
@@ -101,18 +74,10 @@ class Station {
         this.name = name;
     }
 
-    public int getStationVolume() {
-        return stationVolume;
-    }
-
-    public void setStationVolume(int stationVolume) {
-        this.stationVolume = stationVolume;
-    }
-
     public static List<Station> createMockStationList() {
         List<Station> list = new ArrayList<>();
         for (int i = 0; i < 15; i++) {
-            list.add(new Station(i + 1));
+            list.add(new Station("Station " + (i + 1)));
         }
         return list;
     }

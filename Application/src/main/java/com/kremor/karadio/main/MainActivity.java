@@ -1,31 +1,13 @@
-/*
- * Copyright 2013 The Android Open Source Project
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
 package com.kremor.karadio.main;
 
 import android.app.ListActivity;
 import android.content.ActivityNotFoundException;
-import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.net.Uri;
 import android.os.AsyncTask;
-import android.os.Build;
 import android.os.Bundle;
 import android.preference.PreferenceManager;
-import android.support.annotation.RequiresApi;
 import android.support.v7.app.AlertDialog;
 import android.view.KeyEvent;
 import android.view.LayoutInflater;
@@ -38,54 +20,55 @@ import android.widget.ImageButton;
 import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
-
 import com.android.volley.Request;
 import com.android.volley.RequestQueue;
 import com.android.volley.Response;
 import com.android.volley.VolleyError;
 import com.android.volley.toolbox.StringRequest;
 import com.android.volley.toolbox.Volley;
-
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.FileReader;
+import com.google.gson.Gson;
+import com.google.gson.reflect.TypeToken;
 import java.io.IOException;
+import java.io.Serializable;
+import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.List;
-
-import okhttp3.HttpUrl;
 import okhttp3.OkHttpClient;
 
-public class MainActivity extends ListActivity  {
-    private static final Uri DOCS_URI = Uri.parse(
-            "https://github.com/karawin/Ka-Radio");
+public class MainActivity extends ListActivity {
+    private static final Uri DOCS_URI = Uri.parse("https://github.com/karawin/Ka-Radio");
     public static final String FIRSTRUN = "firstrun";
-    public static final String PREFERENCE = "PREFERENCE";
-
-    public static final String DEFAULT_RADIO_IP = "http://192.168.1.110";
-    String charset = "UTF-8";  // Or in Java 7 and later, use the constant: java.nio.charset.StandardCharsets.UTF_8.name()
-    String station = "1";
-    String volume = "50";
-    boolean radioPlaying = false;
+    public static final String STORED_STATION = "STORED_STATION";
+    public static final String CURRENT_STATION = "currentStation";
+    private static final String CURRENT_VOLUME = "volume";
+    public static final String PLAYING = "playing";
+    public static final String STATUS = "status";
+    private static final String MUTE = "mMute";
+    private static final String STORED_VOLUME = "storedVolume";
+    private SharedPreferences mPreferences;
+    public static final String DEFAULT_RADIO_IP = "192.168.1.110";
+    Boolean radioPlaying = false;
     private ImageButton playButton;
     private TextView statusBar;
-    public int mCurrentStation = 0;
+    public int mCurrentStation;
     List<Station> mStationList;
     private RequestQueue mRequestQueue;
-    private int mCurrentVolume = 80;
+    private int mCurrentVolume = 70;
+    private Boolean mMute = false;
+    private Menu menu;
 
-    @RequiresApi(api = Build.VERSION_CODES.KITKAT)
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.main);
         mRequestQueue = Volley.newRequestQueue(this);
-        PreferenceManager.setDefaultValues(this, R.xml.preferences, false);
-        mStationList = readStationList(this, mRequestQueue);
-        setListAdapter(mListAdapter);
-        sendCommand("infos", 0);
+        PreferenceManager.setDefaultValues(this,R.xml.preferences, false);
+        mPreferences = PreferenceManager.getDefaultSharedPreferences(this);
         statusBar = (TextView) findViewById(R.id.statusBar);
 
+        readCurrentRadioStatus(savedInstanceState);
+        readStationList();
+
+        setListAdapter(mListAdapter);
         findViewById(R.id.prev_button).setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
@@ -93,6 +76,7 @@ public class MainActivity extends ListActivity  {
                 if (radioPlaying) {
                     statusBar.setText(mStationList.get(prevStation) + " is playing");
                     sendCommand("play", prevStation);
+                    mCurrentStation = prevStation;
                 }
             }
         });
@@ -103,14 +87,14 @@ public class MainActivity extends ListActivity  {
                 if (radioPlaying) {
                     sendCommand("play", nextStation);
                     statusBar.setText(mStationList.get(nextStation) + " is playing");
+                    mCurrentStation = nextStation;
                 }
             }
         });
         playButton = (ImageButton) findViewById(R.id.play_button);
         playButton.setOnClickListener(new View.OnClickListener() {
-            //@RequiresApi(api = Build.VERSION_CODES.N)
             public void onClick(View view) {
-                if (!radioPlaying){
+                if (!radioPlaying) {
                     //send get reqeust to start
                     sendCommand("play", mCurrentStation);
                     statusBar.setText(mStationList.get(mCurrentStation) + " is playing");
@@ -134,33 +118,37 @@ public class MainActivity extends ListActivity  {
             }
         });
 
-        boolean firstrun = getSharedPreferences(PREFERENCE, MODE_PRIVATE).getBoolean(FIRSTRUN, true);
-        if (firstrun){
-            //... Display instructions
-            // Save the state
+        if (mPreferences.getBoolean(FIRSTRUN, true)) {
+            //... Display instructions for first time
             findViewById(R.id.tipTextView).setVisibility(View.VISIBLE);
-            getSharedPreferences(PREFERENCE, MODE_PRIVATE)
-                    .edit()
-                    .putBoolean(FIRSTRUN, false)
-                    .apply();
+            mPreferences.edit().putBoolean(FIRSTRUN, false).apply();
         }
     }
 
     @Override
     protected void onSaveInstanceState(Bundle outState) {
-        outState.putInt("currentStation", mCurrentStation);
-        outState.putString("status", String.valueOf(statusBar.getText()));
-        outState.putBoolean("playing", radioPlaying);
+        outState.putInt(CURRENT_STATION, mCurrentStation);
+        outState.putInt(CURRENT_VOLUME, mCurrentVolume);
+        outState.putString(STATUS, String.valueOf(statusBar.getText()));
+        outState.putBoolean(PLAYING, radioPlaying);
+        outState.putBoolean(MUTE, mMute);
+        outState.putSerializable(STORED_STATION, (Serializable) mStationList);
+
         super.onSaveInstanceState(outState);
     }
 
     @Override
     public void onRestoreInstanceState(Bundle savedInstanceState) {
         super.onRestoreInstanceState(savedInstanceState);
-        statusBar.setText(savedInstanceState.getString("status"));
-        if (savedInstanceState.getBoolean("playing")) {
+        statusBar.setText(savedInstanceState.getString(STATUS));
+        if (radioPlaying = savedInstanceState.getBoolean(PLAYING)) {
+            playButton.setImageResource(R.drawable.profile_pause);
+        } else
             playButton.setImageResource(R.drawable.profile_play);
-        } else playButton.setImageResource(R.drawable.profile_pause);
+        mCurrentStation = savedInstanceState.getInt(CURRENT_STATION);
+        mCurrentVolume = savedInstanceState.getInt(CURRENT_VOLUME);
+        mMute = savedInstanceState.getBoolean(MUTE);
+        mStationList = (List<Station>) savedInstanceState.getSerializable(STORED_STATION);
     }
 
     private int nextStation(int mCurrentStation) {
@@ -171,12 +159,15 @@ public class MainActivity extends ListActivity  {
 
     private int prevStation(int mCurrentStation) {
         if (mCurrentStation <= 0) return mCurrentStation;
-            return mCurrentStation - 1;
+        return mCurrentStation - 1;
     }
 
-    private void sendCommand(final String command, int StationToPlay) {
-        String ipaddress = PreferenceManager.getDefaultSharedPreferences(getBaseContext()).getString("IP", DEFAULT_RADIO_IP);
-        String url = "http://" + ipaddress + "/" + "?" + command + "=" + StationToPlay + "&" + "volume=" + mCurrentVolume;
+    private void sendCommand(final String command, int command_value) {
+        String ipaddress = mPreferences.getString(getString(R.string.ip), DEFAULT_RADIO_IP);
+        String url = "http://" + ipaddress + "/" + "?" + command + "=" + command_value + "&" + "volume=" + mCurrentVolume;
+        if (url.contains("infos")) {
+            url = url.substring(0, url.indexOf('&'));
+        }
 
         // Request a string response from the provided DEFAULT_RADIO_IP.
         StringRequest stringRequest = new StringRequest(Request.Method.GET, url,
@@ -186,21 +177,28 @@ public class MainActivity extends ListActivity  {
                         if (command.equals("infos")) {
                             String[] arr = response.split("\n");
                             List<String> list = new ArrayList<>();
-                            for (String s: arr){
-                                list.add(s.substring( s.indexOf(":")+1));
-                                list.set(list.size()-1, list.get(list.size()-1).trim());
+                            for (String s : arr) {
+                                list.add(s.substring(s.indexOf(":") + 1));
+                                list.set(list.size() - 1, list.get(list.size() - 1).trim());
                             }
                             if (radioPlaying = Integer.parseInt(list.get(4)) > 0) {
-                                mCurrentVolume= Integer.parseInt(list.get(0));
+                                mCurrentVolume = Integer.parseInt(list.get(0));
+                                mPreferences.edit()
+                                        .putInt(STORED_VOLUME, mCurrentVolume)
+                                        .commit();
                                 mCurrentStation = Integer.parseInt(list.get(1));
                                 statusBar.setText(mStationList.get(mCurrentStation) + " is playing");
-                            };
+                                radioPlaying = true;
+                            } else {
+                                radioPlaying = false;
+                                statusBar.setText("Radio is silent");
+                            }
                         }
                     }
                 }, new Response.ErrorListener() {
             @Override
             public void onErrorResponse(VolleyError error) {
-                //statusBar.setText("That didn't work!");
+                statusBar.setText("Radio didn't responde correctly");
             }
         });
         // Add the request to the RequestQueue.
@@ -208,7 +206,6 @@ public class MainActivity extends ListActivity  {
     }
 
     private BaseAdapter mListAdapter = new BaseAdapter() {
-
         @Override
         public int getCount() {
             return mStationList.size();
@@ -232,7 +229,7 @@ public class MainActivity extends ListActivity  {
 
             Station station = (Station) getItem(position);
             TextView textViewStationName = (TextView) convertView.findViewById(R.id.stationName);
-            textViewStationName.setText(station.toString());
+            textViewStationName.setText(station.getName());
 
             // Because the list item contains multiple touch targets, you should not override
             // onListItemClick. Instead, set a click listener for each target individually.
@@ -256,12 +253,25 @@ public class MainActivity extends ListActivity  {
     public boolean onCreateOptionsMenu(Menu menu) {
         super.onCreateOptionsMenu(menu);
         getMenuInflater().inflate(R.menu.main, menu);
+        this.menu = menu;
         return true;
     }
 
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
         switch (item.getItemId()) {
+            case R.id.mute_button:
+                if (mMute) {
+                    sendCommand("volume", mCurrentVolume);
+                    mMute = false;
+                    menu.getItem(0).setIcon(R.drawable.sound);
+                }
+                else {
+                    sendCommand("volume", 0);
+                    mMute = true;
+                    menu.getItem(0).setIcon(R.drawable.no_sound);
+                }
+                return true;
             case R.id.docs_link:
                 try {
                     startActivity(new Intent(Intent.ACTION_VIEW, DOCS_URI));
@@ -270,34 +280,26 @@ public class MainActivity extends ListActivity  {
                 return true;
             case R.id.preferences_menu:
                 try {
-                    startActivity(new Intent(this, MyPreferencesActivity.class));
-                } catch (ActivityNotFoundException ignored) {}
+                    startActivity(new Intent(this, SettingActivity.class));
+
+                } catch (ActivityNotFoundException ignored) {
+                }
+                break;
+            case R.id.fetchStations:
+                DownloadStationTask task = new DownloadStationTask();
+                task.execute();
+                return true;
         }
         return super.onOptionsItemSelected(item);
     }
 
     @Override
-    protected void onStop () {
+    protected void onStop() {
         super.onStop();
         if (mRequestQueue != null) {
             mRequestQueue.stop();
         }
     }
-//    @Override
-//    public boolean onKeyDown(int keyCode, KeyEvent event){
-//
-//        if (keyCode == KeyEvent.KEYCODE_VOLUME_UP){
-//            Toast.makeText(this, "Volume Up", Toast.LENGTH_LONG).show();
-//            return true;
-//        }
-//
-//        if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN){
-//            Toast.makeText(this, "Volume Down", Toast.LENGTH_LONG).show();
-//            return true;
-//        }
-//
-//        return super.onKeyDown(keyCode, event);
-//    }
 
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
@@ -306,6 +308,9 @@ public class MainActivity extends ListActivity  {
         switch (keyCode) {
             case KeyEvent.KEYCODE_VOLUME_UP:
                 if (action == KeyEvent.ACTION_DOWN) {
+                    if (mCurrentVolume >= 244)
+                        mCurrentVolume = 244;
+
                     mCurrentVolume += 10;
                     Toast.makeText(this, "Volume Up " + mCurrentVolume, Toast.LENGTH_SHORT).show();
                     sendCommand("", mCurrentStation);
@@ -314,6 +319,8 @@ public class MainActivity extends ListActivity  {
                 return true;
             case KeyEvent.KEYCODE_VOLUME_DOWN:
                 if (action == KeyEvent.ACTION_DOWN) {
+                    if (mCurrentVolume <= 10)
+                        mCurrentVolume = 10;
                     mCurrentVolume -= 10;
                     Toast.makeText(this, "Volume Down " + mCurrentVolume, Toast.LENGTH_SHORT).show();
                     sendCommand("", mCurrentStation);
@@ -331,7 +338,7 @@ public class MainActivity extends ListActivity  {
         View v = inflater.inflate(R.layout.volume_dialog, (ViewGroup) findViewById(R.id.volume_dialog_root_element));
 
 
-        SeekBar seekbarVolume = (SeekBar)v.findViewById(R.id.dialog_seekbar);
+        SeekBar seekbarVolume = (SeekBar) v.findViewById(R.id.dialog_seekbar);
         seekbarVolume.setMax(255);
         //seekbarVolume.setProgress(audioManager.getStreamVolume(AudioManager.STREAM_ALARM));
         seekbarVolume.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
@@ -350,77 +357,91 @@ public class MainActivity extends ListActivity  {
 
             }
         });
-        return  builder.create();
+        return builder.create();
     }
 
-    private class DownloadStationTask extends AsyncTask<String, Void, String> {
+    private class DownloadStationTask extends AsyncTask<String, Void, ArrayList<Station>> {
+
+        private ArrayList<Station> stlist = new ArrayList<>();
 
         @Override
-        protected String doInBackground(String... urls) {
-            String ipaddress = PreferenceManager.getDefaultSharedPreferences(MainActivity.this).getString("IP", MainActivity.DEFAULT_RADIO_IP);
+        protected void onPreExecute() {
+            super.onPreExecute();
+            statusBar.setText("Fetching station list. Shouldn't take long");
+        }
+
+        @Override
+        protected ArrayList<Station> doInBackground(String... urls) {
+            String ipaddress = mPreferences.getString(getString(R.string.ip), DEFAULT_RADIO_IP);
             OkHttpClient client = new OkHttpClient();
-            for (int i = 0; i < 255; i++) {
-                HttpUrl url = new HttpUrl.Builder()
-                            .scheme("http")
-                            .host(ipaddress)
-                            .addQueryParameter("list", String.valueOf(i))
-                            .build();
-                okhttp3.Request request =
-                        new okhttp3.Request.Builder()
-                                .url(url)
-                                .build();
+            for (int i = 0; i < 25; i++) {
+                String url = String.format("http://%s/?list=%d", ipaddress, i);
+
+                okhttp3.Request request = new okhttp3.Request.Builder()
+                        .url(url)
+                        .build();
                 okhttp3.Response response = null;
+                if (isCancelled()) {
+                    client.connectionPool().evictAll();
+                    break; }
                 try {
                     response = client.newCall(request).execute();
                 } catch (IOException e) {
                     e.printStackTrace();
                 }
 
-                if (response.isSuccessful() && response.body() != null) {
-                    try {
-                        mStationList.add(new Station(response.body().string(), 0));
-                    } catch (IOException e) {
-                        e.printStackTrace();
+                try {
+                    if (response.isSuccessful() && response.body() != null) {
+                        String str = response.body().string().trim();
+                        if (!str.isEmpty()) {
+                            Station st = new Station(str, 0);
+                            stlist.add(st);
+                        }
                     }
+                } catch (NullPointerException e) {
+                    e.printStackTrace();
+                } catch (IOException e) {
+                    e.printStackTrace();
                 }
             }
-            return "Download failed";
+            return stlist;
         }
 
         @Override
-        protected void onPostExecute(String result)        {
+        protected void onPostExecute(ArrayList<Station> list) {
+            mStationList = list;
+            mListAdapter.notifyDataSetChanged();
+            mPreferences.edit()
+                .putString(STORED_STATION, new Gson().toJson(mStationList))
+                .commit();
+            statusBar.setText("Station read success");
+        }
 
+        @Override
+        protected void onCancelled() {
+            super.onCancelled();
+            statusBar.setText("Very bad response");
         }
     }
-
-    @RequiresApi(api = Build.VERSION_CODES.KITKAT)
-    public List<Station> readStationList(Context context, RequestQueue mRequestQueue) {
-        if (PreferenceManager.getDefaultSharedPreferences(context).getBoolean(MainActivity.FIRSTRUN, true)) {
+    public void readStationList() {
+        if (!mPreferences.contains(STORED_STATION)) {
             try {
                 DownloadStationTask task = new DownloadStationTask();
                 task.execute();
-                mListAdapter.notifyDataSetChanged();
-
             } finally {
-
+                mStationList = Station.createMockStationList();
             }
+        } else {
+            Type type = new TypeToken<ArrayList<Station>>() {
+            }.getType();
+            mStationList = new Gson().fromJson(mPreferences.getString(STORED_STATION, String.valueOf(Station.createMockStationList())), type);
         }
-        else {
-            // just convert local file to StationList
-            File internalStorageDir = context.getFilesDir();
-            File filestations = new File(internalStorageDir, "stations.csv");
-            try (BufferedReader br = new BufferedReader(new FileReader(filestations))) {
-                String line;
-                while ((line = br.readLine()) != null) {
-                    mStationList.add(new Station(line, 1));
-                }
+        //mStationList = Station.createMockStationList();
+    }
 
-            } catch (FileNotFoundException e) {
-                e.printStackTrace();
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
+    private void readCurrentRadioStatus(Bundle bundle) {
+        if ((bundle == null) || (!bundle.containsKey(PLAYING))) {
+            sendCommand("infos", 0);
         }
-        return Station.createMockStationList();
     }
 }

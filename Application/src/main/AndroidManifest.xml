@@ -33,6 +33,7 @@
 
     <application android:label="@string/app_name"
         android:icon="@drawable/karadio_logo"
+        android:logo="@drawable/karadio_logo"
         android:theme="@style/Theme.Sample"
         android:allowBackup="true">
 
@@ -43,9 +44,8 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity android:name=".SettingActivity" >
 
-        <activity android:name="com.kremor.karadio.main.MyPreferencesActivity"
-            android:label="@string/Options">
         </activity>
 
     </application>

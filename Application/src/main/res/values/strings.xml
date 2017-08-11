@@ -31,4 +31,8 @@
     <string name="docs_title">Project readme</string>
     <string name="Options">Options</string>
     <string name="StationListPath">stationListPath</string>
+    <string name="playing">playing</string>
+    <string name="ip">ip_address</string>
+    <string name="defaultIP">192.168.1.110</string>
+    <string name="defaultStationPath">webstation.txt</string>
 </resources>
