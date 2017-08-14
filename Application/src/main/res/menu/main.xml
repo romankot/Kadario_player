@@ -11,6 +11,15 @@
         android:title="Refetch stations"
         myapp:showAsAction="never" />
     <item
+        android:id="@+id/mute_button"
+        android:icon="@drawable/sound"
+        android:title="Mute"
+        android:showAsAction="always" />
+    <item
+        android:id="@+id/fetchStations"
+        android:title="Fetch stations"
+        myapp:showAsAction="never" />
+    <item
         android:id="@+id/preferences_menu"
         android:title="Settings"
         myapp:showAsAction="ifRoom"        />
