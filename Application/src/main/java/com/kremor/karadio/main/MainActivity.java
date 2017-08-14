@@ -7,6 +7,7 @@ import android.content.SharedPreferences;
 import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Bundle;
+import android.preference.Preference;
 import android.preference.PreferenceManager;
 import android.support.v7.app.AlertDialog;
 import android.view.KeyEvent;
@@ -35,7 +36,7 @@ import java.util.ArrayList;
 import java.util.List;
 import okhttp3.OkHttpClient;
 
-public class MainActivity extends ListActivity {
+public class MainActivity extends ListActivity  {
     private static final Uri DOCS_URI = Uri.parse("https://github.com/karawin/Ka-Radio");
     public static final String FIRSTRUN = "firstrun";
     public static final String STORED_STATION = "STORED_STATION";
@@ -126,15 +127,16 @@ public class MainActivity extends ListActivity {
     }
 
     @Override
-    protected void onSaveInstanceState(Bundle outState) {
-        outState.putInt(CURRENT_STATION, mCurrentStation);
-        outState.putInt(CURRENT_VOLUME, mCurrentVolume);
-        outState.putString(STATUS, String.valueOf(statusBar.getText()));
-        outState.putBoolean(PLAYING, radioPlaying);
-        outState.putBoolean(MUTE, mMute);
-        outState.putSerializable(STORED_STATION, (Serializable) mStationList);
+    protected void onSaveInstanceState(Bundle bundle) {
+        bundle.putInt(CURRENT_STATION, mCurrentStation);
+        bundle.putInt(CURRENT_VOLUME, mCurrentVolume);
+        bundle.putString(STATUS, String.valueOf(statusBar.getText()));
+        bundle.putBoolean(PLAYING, radioPlaying);
+        bundle.putBoolean(MUTE, mMute);
+        bundle.putSerializable(STORED_STATION, (Serializable) mStationList);
+        bundle.putString(getString(R.string.ip), mPreferences.getString(getString(R.string.ip), ""));
 
-        super.onSaveInstanceState(outState);
+        super.onSaveInstanceState(bundle);
     }
 
     @Override
@@ -149,6 +151,10 @@ public class MainActivity extends ListActivity {
         mCurrentVolume = savedInstanceState.getInt(CURRENT_VOLUME);
         mMute = savedInstanceState.getBoolean(MUTE);
         mStationList = (List<Station>) savedInstanceState.getSerializable(STORED_STATION);
+        if (!mPreferences.getString(getString(R.string.ip), "").equals(savedInstanceState.getString(getString(R.string.ip)))) {
+            DownloadStationTask downloadStationTask = new DownloadStationTask();
+            downloadStationTask.execute();
+        }
     }
 
     private int nextStation(int mCurrentStation) {
@@ -330,34 +336,6 @@ public class MainActivity extends ListActivity {
             default:
                 return super.dispatchKeyEvent(event);
         }
-    }
-
-    public AlertDialog alarmVolume(View view) {
-        AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        LayoutInflater inflater = (LayoutInflater) getSystemService(LAYOUT_INFLATER_SERVICE);
-        View v = inflater.inflate(R.layout.volume_dialog, (ViewGroup) findViewById(R.id.volume_dialog_root_element));
-
-
-        SeekBar seekbarVolume = (SeekBar) v.findViewById(R.id.dialog_seekbar);
-        seekbarVolume.setMax(255);
-        //seekbarVolume.setProgress(audioManager.getStreamVolume(AudioManager.STREAM_ALARM));
-        seekbarVolume.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            @Override
-            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                mCurrentVolume = progress;
-            }
-
-            @Override
-            public void onStartTrackingTouch(SeekBar seekBar) {
-
-            }
-
-            @Override
-            public void onStopTrackingTouch(SeekBar seekBar) {
-
-            }
-        });
-        return builder.create();
     }
 
     private class DownloadStationTask extends AsyncTask<String, Void, ArrayList<Station>> {
