@@ -57,6 +57,7 @@ public class MainActivity extends ListActivity  {
     private int mCurrentVolume = 70;
     private Boolean mMute = false;
     private Menu menu;
+    private DownloadStationTask task;
 
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -193,7 +194,7 @@ public class MainActivity extends ListActivity  {
                                         .putInt(STORED_VOLUME, mCurrentVolume)
                                         .commit();
                                 mCurrentStation = Integer.parseInt(list.get(1));
-                                statusBar.setText(mStationList.get(mCurrentStation) + " is playing");
+                                statusBar.setText(list.get(2) + " is playing");
                                 radioPlaying = true;
                             } else {
                                 radioPlaying = false;
@@ -204,7 +205,7 @@ public class MainActivity extends ListActivity  {
                 }, new Response.ErrorListener() {
             @Override
             public void onErrorResponse(VolleyError error) {
-                statusBar.setText("Radio didn't responde correctly");
+                statusBar.setText("Radio isn't reachable");
             }
         });
         // Add the request to the RequestQueue.
@@ -292,7 +293,7 @@ public class MainActivity extends ListActivity  {
                 }
                 break;
             case R.id.fetchStations:
-                DownloadStationTask task = new DownloadStationTask();
+                task = new DownloadStationTask();
                 task.execute();
                 return true;
         }
@@ -304,6 +305,9 @@ public class MainActivity extends ListActivity  {
         super.onStop();
         if (mRequestQueue != null) {
             mRequestQueue.stop();
+        }
+        if (task!= null) {
+            task.cancel(true);
         }
     }
 
@@ -352,7 +356,7 @@ public class MainActivity extends ListActivity  {
         protected ArrayList<Station> doInBackground(String... urls) {
             String ipaddress = mPreferences.getString(getString(R.string.ip), DEFAULT_RADIO_IP);
             OkHttpClient client = new OkHttpClient();
-            for (int i = 0; i < 25; i++) {
+            for (int i = 0; i < 250; i++) {
                 String url = String.format("http://%s/?list=%d", ipaddress, i);
 
                 okhttp3.Request request = new okhttp3.Request.Builder()
